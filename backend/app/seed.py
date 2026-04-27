@@ -1,8 +1,7 @@
 """
 Seed script — creates test accounts in a fresh database.
-Run once after `docker compose up -d`:
-
-    python -m app.seed
+Called automatically on backend startup (idempotent — skips existing users).
+Can also be run manually:  python -m app.seed
 """
 from app.db.database import SessionLocal, engine, Base
 from app.models.models import User
@@ -20,11 +19,11 @@ SEED_USERS = [
 
 def seed():
     db = SessionLocal()
+    created = 0
     try:
         for u in SEED_USERS:
             exists = db.query(User).filter(User.email == u["email"]).first()
             if exists:
-                print(f"  ⏭  {u['email']} already exists, skipping")
                 continue
             user = User(
                 name=u["name"],
@@ -33,9 +32,15 @@ def seed():
                 role=u["role"],
             )
             db.add(user)
-            print(f"  ✅ Created {u['role']:13s} → {u['email']}")
+            created += 1
         db.commit()
-        print("\n🎉 Seeding complete!")
+        if created:
+            print(f"[seed] Created {created} test account(s)")
+        else:
+            print("[seed] All test accounts already exist, skipping")
+    except Exception as e:
+        print(f"[seed] Warning: {e}")
+        db.rollback()
     finally:
         db.close()
 
