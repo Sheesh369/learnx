@@ -6,6 +6,10 @@ from app.api.auth import router as auth_router
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
 
+# Auto-seed test accounts (idempotent — skips if already exist)
+from app.seed import seed
+seed()
+
 app = FastAPI(
     title="Learnexa API",
     description="Backend API for SSB International School's Learnexa learning platform.",
