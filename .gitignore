@@ -1,0 +1,21 @@
+# Python virtualenv
+backend/myenv/
+
+# Environment files
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+
+# Alembic — keep versions tracked, ignore pyc
+backend/alembic/versions/__pycache__/

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react'
 import useAuthStore from '@/store/authStore'
 import { APP_NAME, SCHOOL_NAME } from '@/lib/constants'
@@ -105,7 +105,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-sm text-neutral-500 mt-6">
-            Don&apos;t have an account? <Link to="/register" className="text-primary-600 font-semibold hover:underline">Create one</Link>
+            Contact your school administrator to get access.
           </p>
         </div>
       </div>

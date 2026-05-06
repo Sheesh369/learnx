@@ -10,7 +10,6 @@ interface AuthState {
   isLoading: boolean
   error: string | null
   login: (email: string, password: string) => Promise<void>
-  register: (data: { name: string; email: string; password: string; role: string; class_name?: string; section?: string }) => Promise<void>
   logout: () => void
   loadUser: () => Promise<void>
   clearError: () => void
@@ -32,19 +31,6 @@ const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: res.user, token: res.access_token, isAuthenticated: true, isLoading: false })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed'
-      set({ isLoading: false, error: message })
-      throw err
-    }
-  },
-
-  register: async (data) => {
-    set({ isLoading: true, error: null })
-    try {
-      const res = await api.auth.register(data)
-      localStorage.setItem('learnexa_token', res.access_token)
-      set({ user: res.user, token: res.access_token, isAuthenticated: true, isLoading: false })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Registration failed'
       set({ isLoading: false, error: message })
       throw err
     }

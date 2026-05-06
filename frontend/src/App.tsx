@@ -12,8 +12,6 @@ import DashboardLayout from '@/components/layout/DashboardLayout'
 // Public — lazy loaded
 const LandingPage = lazy(() => import('@/pages/public/LandingPage'))
 const LoginPage = lazy(() => import('@/pages/public/LoginPage'))
-const RegisterPage = lazy(() => import('@/pages/public/RegisterPage'))
-
 // Admin — lazy loaded
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'))
 const ClassManagement = lazy(() => import('@/pages/admin/ClassManagement'))
@@ -22,6 +20,7 @@ const SubjectChapters = lazy(() => import('@/pages/admin/SubjectChapters'))
 const ChapterContent = lazy(() => import('@/pages/admin/ChapterContent'))
 const TeacherManagement = lazy(() => import('@/pages/admin/TeacherManagement'))
 const SchoolSettings = lazy(() => import('@/pages/admin/SchoolSettings'))
+const AIProcessor = lazy(() => import('@/pages/admin/AIProcessor'))
 
 // Teacher — lazy loaded
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard'))
@@ -72,7 +71,6 @@ export default function App() {
             {/* Public */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
 
             {/* Admin */}
             <Route path="/admin" element={<ProtectedRoute roles={['school_admin']}><DashboardLayout /></ProtectedRoute>}>
@@ -85,6 +83,7 @@ export default function App() {
               <Route path="media" element={<ComingSoon title="Media Library" />} />
               <Route path="questions" element={<QuestionBank />} />
               <Route path="teachers" element={<TeacherManagement />} />
+              <Route path="ai-processor" element={<AIProcessor />} />
             </Route>
 
             {/* Teacher */}

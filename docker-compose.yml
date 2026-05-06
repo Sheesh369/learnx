@@ -18,5 +18,15 @@ services:
       timeout: 5s
       retries: 5
 
+  gcs:
+    image: fsouza/fake-gcs-server:latest
+    container_name: learnexa-gcs
+    ports:
+      - "4443:4443"
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost:4443"]
+    volumes:
+      - learnexa_gcs_data:/data
+
 volumes:
   learnexa_pgdata:
+  learnexa_gcs_data:

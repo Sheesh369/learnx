@@ -1,39 +1,69 @@
+import os
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.database import engine, Base
+
+# Import all models so they are registered with Base metadata
+import app.models  # noqa: F401
+
 from app.api.auth import router as auth_router
+from app.api.content import router as content_router
+from app.api.glossary import router as glossary_router
+from app.api.admin.grades import router as grades_router
+from app.api.admin.users import router as admin_users_router
+from app.api.admin.books import router as books_router
+from app.api.admin.chapters import router as chapters_router
 
-# Create all tables on startup
-Base.metadata.create_all(bind=engine)
 
-# Auto-seed test accounts (idempotent — skips if already exist)
-from app.seed import seed
-seed()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure GCS bucket exists (local emulator or real GCS)
+    try:
+        from app.core.gcs import get_gcs_client
+        from app.core.config import GCS_BUCKET_NAME
+        client = get_gcs_client()
+        if not client.lookup_bucket(GCS_BUCKET_NAME):
+            client.create_bucket(GCS_BUCKET_NAME)
+            print(f"GCS bucket '{GCS_BUCKET_NAME}' created.")
+        else:
+            print(f"GCS bucket '{GCS_BUCKET_NAME}' already exists.")
+    except Exception as e:
+        print(f"GCS bucket init warning: {e}")
+    yield
+
 
 app = FastAPI(
     title="Learnexa API",
     description="Backend API for SSB International School's Learnexa learning platform.",
-    version="1.0.0",
+    version="2.0.0",
+    debug=True,
+    lifespan=lifespan,
 )
-
-import os
-
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost:5173,http://localhost:8081").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register routers
 app.include_router(auth_router)
+app.include_router(content_router)
+app.include_router(glossary_router)
+app.include_router(grades_router)
+app.include_router(admin_users_router)
+app.include_router(books_router)
+app.include_router(chapters_router)
+
 
 @app.get("/")
 def root():
     return {"message": "Learnexa API is running", "school": "SSB International School"}
+
 
 @app.get("/health")
 def health():

@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Settings, BookOpen, Users,
-  ClipboardList, Brain, Bell, TrendingUp, LogOut, ChevronLeft, ChevronRight,
+  ClipboardList, Brain, Bell, TrendingUp, LogOut, ChevronLeft, ChevronRight, Bot,
 } from 'lucide-react'
 import useAuthStore from '@/store/authStore'
 import { APP_NAME } from '@/lib/constants'
@@ -19,6 +19,7 @@ const GROUPED_NAV: Record<string, NavGroup[]> = {
     { label: 'CONTENT', items: [
       { label: 'Classes', icon: BookOpen, path: '/admin/classes' },
       { label: 'Question Bank', icon: Brain, path: '/admin/questions' },
+      { label: 'AI Processor', icon: Bot, path: '/admin/ai-processor' },
     ]},
     { label: 'PEOPLE', items: [
       { label: 'Teachers', icon: Users, path: '/admin/teachers' },
