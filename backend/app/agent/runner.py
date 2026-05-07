@@ -90,7 +90,31 @@ async def process_chapter_async(
 
     output = ChapterContentOutput.model_validate_json(result_json)
 
-    # 3. Persist simplified_text
+    # 3. Delete previous AI-generated content for this chapter (replace, not append)
+    from app.models.glossary import GlossaryEntry
+    from app.core.gcs import delete_blob
+
+    old_ai_items = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.chapter_id == chapter_id,
+            ChapterContent.is_ai_generated == True,  # noqa: E712
+        )
+        .all()
+    )
+    for item in old_ai_items:
+        if item.gcs_url:
+            delete_blob(item.gcs_url)
+        db.delete(item)
+
+    db.query(GlossaryEntry).filter(
+        GlossaryEntry.chapter_id == chapter_id,
+        GlossaryEntry.is_ai_generated == True,  # noqa: E712
+    ).delete(synchronize_session=False)
+
+    db.flush()
+
+    # 5. Persist simplified_text
     db.add(
         ChapterContent(
             chapter_id=chapter_id,
@@ -101,7 +125,7 @@ async def process_chapter_async(
         )
     )
 
-    # 4. Persist YouTube URLs
+    # 6. Persist YouTube URLs
     for url in output.youtube_urls:
         db.add(
             ChapterContent(
@@ -113,7 +137,7 @@ async def process_chapter_async(
             )
         )
 
-    # 5. Persist AI-generated images
+    # 7. Persist AI-generated images
     for img_url in output.image_urls:
         db.add(
             ChapterContent(
@@ -125,7 +149,7 @@ async def process_chapter_async(
             )
         )
 
-    # 6. Persist glossary words
+    # 8. Persist glossary words
     for gw in output.glossary_words:
         upsert_word(
             word=gw.word,

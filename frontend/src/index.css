@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 @import "./style/token.scss";
 
 /* ─── Base layer ─── */

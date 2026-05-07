@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, Bot, Loader2, FileText, Video, Image, BookOpen } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useDocTitle } from '@/lib/useDocTitle'
 import { api } from '@/services/api'
 import type { Grade, Subject, Chapter, ContentItem } from '@/services/api'
@@ -140,7 +142,9 @@ export default function ChapterContent() {
                   <h2 className="text-lg font-bold text-primary-700 mb-4">{item.title}</h2>
                 )}
                 {item.text_content && (
-                  <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-wrap">{item.text_content}</p>
+                  <div className="prose prose-sm prose-neutral max-w-none text-sm text-neutral-700 leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text_content}</ReactMarkdown>
+                  </div>
                 )}
                 {item.is_ai_generated && (
                   <span className="inline-flex items-center gap-1 mt-4 text-[11px] text-neutral-400">
