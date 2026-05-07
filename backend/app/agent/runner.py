@@ -1,8 +1,12 @@
 """
 Async runner: executes the ADK agent and persists its output to the DB.
+PDF is sent directly to Gemini as inline data — no text extraction needed.
+This works for both text-based and scanned/image-based PDFs.
 """
-import json
-import asyncio
+import logging
+import os
+import traceback
+from datetime import datetime
 from sqlalchemy.orm import Session
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -14,10 +18,22 @@ from app.models.content import ChapterContent, ContentType
 from app.services.glossary_service import upsert_word
 
 
-async def _extract_pdf_text(gcs_url: str) -> str:
-    """Download PDF from GCS (real or emulated) and extract plain text using pypdf."""
+def _get_run_logger(chapter_id: str) -> logging.Logger:
+    """Create a file logger for a single agent run."""
+    os.makedirs("logs", exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = f"logs/agent_{chapter_id}_{ts}.log"
+    logger = logging.getLogger(f"agent_run.{chapter_id}.{ts}")
+    logger.setLevel(logging.DEBUG)
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s\n%(message)s\n"))
+    logger.addHandler(fh)
+    return logger
+
+
+async def _download_pdf_bytes(gcs_url: str) -> bytes:
+    """Download raw PDF bytes from GCS (real or emulated)."""
     import io
-    from pypdf import PdfReader
     from app.core.gcs import get_gcs_client, _blob_name_from_url
     from app.core.config import GCS_BUCKET_NAME
 
@@ -29,9 +45,7 @@ async def _extract_pdf_text(gcs_url: str) -> str:
     buf = io.BytesIO()
     client.bucket(GCS_BUCKET_NAME).blob(blob_name).download_to_file(buf)
     buf.seek(0)
-
-    reader = PdfReader(buf)
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
+    return buf.read()
 
 
 async def process_chapter_async(
@@ -45,19 +59,23 @@ async def process_chapter_async(
 ) -> None:
     """Run the ADK agent for a chapter and persist results."""
 
-    # 1. Extract text from PDF
-    raw_text = await _extract_pdf_text(pdf_gcs_url)
-    if not raw_text.strip():
-        raise ValueError("PDF appears to be empty or non-textual")
+    logger = _get_run_logger(chapter_id)
 
-    user_message = (
+    # 1. Download PDF bytes — send directly to Gemini (handles scanned PDFs via vision)
+    pdf_bytes = await _download_pdf_bytes(pdf_gcs_url)
+    logger.info(f"[PDF BYTES] size={len(pdf_bytes)} bytes from {pdf_gcs_url}")
+
+    text_prompt = (
         f"Chapter: {chapter_title}\n"
         f"Subject: {subject_name}\n"
         f"Grade: {grade_standard}\n\n"
-        f"Raw text:\n{raw_text[:12000]}"  # limit to avoid token overflow
+        f"The attached PDF is the full textbook chapter. "
+        f"Read every page carefully and rewrite the entire chapter as instructed."
     )
 
-    # 2. Run agent
+    logger.info(f"[USER MESSAGE]\n{text_prompt}")
+
+    # 2. Run agent — PDF sent as inline_data Part alongside the text prompt
     session_service = InMemorySessionService()
     runner = Runner(
         agent=book_agent,
@@ -74,21 +92,55 @@ async def process_chapter_async(
         session_id=session.id,
         new_message=genai_types.Content(
             role="user",
-            parts=[genai_types.Part(text=user_message)],
+            parts=[
+                genai_types.Part(text=text_prompt),
+                genai_types.Part(
+                    inline_data=genai_types.Blob(
+                        mime_type="application/pdf",
+                        data=pdf_bytes,
+                    )
+                ),
+            ],
         ),
     )
 
     result_json: str | None = None
-    async for event in events:
-        if event.is_final_response() and event.content and event.content.parts:
-            result_json = event.content.parts[0].text
-        # Drain all events — do not break early, as that causes GeneratorExit
-        # to propagate into the ADK's OpenTelemetry spans and crash
+    try:
+        async for event in events:
+            if event.is_final_response() and event.content and event.content.parts:
+                result_json = event.content.parts[0].text
+            # Drain all events — do not break early, as that causes GeneratorExit
+            # to propagate into the ADK's OpenTelemetry spans and crash
+    except Exception:
+        logger.error(f"[ERROR] Agent run failed\n{traceback.format_exc()}")
+        raise
+
+    logger.info(f"[AGENT RAW RESPONSE]\n{result_json}")
 
     if not result_json:
         raise ValueError("Agent returned no output")
 
-    output = ChapterContentOutput.model_validate_json(result_json)
+    # Strip markdown code fences if the model wrapped the JSON (e.g. ```json ... ```)
+    stripped = result_json.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.split("\n", 1)[-1]          # remove first ```json line
+        stripped = stripped.rsplit("```", 1)[0].strip() # remove trailing ```
+        result_json = stripped
+
+    try:
+        output = ChapterContentOutput.model_validate_json(result_json)
+    except Exception:
+        logger.error(f"[ERROR] Failed to parse agent output\n{traceback.format_exc()}")
+        raise
+
+    logger.info(
+        f"[PARSED OUTPUT SUMMARY] "
+        f"simplified_text={len(output.simplified_text)} chars, "
+        f"youtube_urls={len(output.youtube_urls)}, "
+        f"image_urls={len(output.image_urls)}, "
+        f"glossary_words={len(output.glossary_words)}\n"
+        f"simplified_text preview: {output.simplified_text[:200]}"
+    )
 
     # 3. Delete previous AI-generated content for this chapter (replace, not append)
     from app.models.glossary import GlossaryEntry
@@ -114,7 +166,7 @@ async def process_chapter_async(
 
     db.flush()
 
-    # 5. Persist simplified_text
+    # 4. Persist simplified_text
     db.add(
         ChapterContent(
             chapter_id=chapter_id,
@@ -125,7 +177,7 @@ async def process_chapter_async(
         )
     )
 
-    # 6. Persist YouTube URLs
+    # 5. Persist YouTube URLs
     for url in output.youtube_urls:
         db.add(
             ChapterContent(
@@ -137,7 +189,7 @@ async def process_chapter_async(
             )
         )
 
-    # 7. Persist AI-generated images
+    # 6. Persist AI-generated images
     for img_url in output.image_urls:
         db.add(
             ChapterContent(
@@ -149,7 +201,7 @@ async def process_chapter_async(
             )
         )
 
-    # 8. Persist glossary words
+    # 7. Persist glossary words
     for gw in output.glossary_words:
         upsert_word(
             word=gw.word,
@@ -162,3 +214,4 @@ async def process_chapter_async(
         )
 
     db.commit()
+    logger.info("[DONE] Chapter processing complete, DB committed.")

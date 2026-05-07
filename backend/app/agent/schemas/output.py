@@ -11,5 +11,5 @@ class GlossaryWord(BaseModel):
 class ChapterContentOutput(BaseModel):
     simplified_text: str
     youtube_urls: list[str]
-    image_urls: list[str]       # GCS URLs (uploaded by image_gen_tool)
+    image_urls: list[str] = []  # kept for future use; always empty now
     glossary_words: list[GlossaryWord]
