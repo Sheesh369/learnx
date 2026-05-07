@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Bot, Loader2, FileText, Video, Image, BookOpen } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Bot, Loader2, FileText, Video, Image, BookOpen, ExternalLink } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useDocTitle } from '@/lib/useDocTitle'
 import { api } from '@/services/api'
-import type { Grade, Subject, Chapter, ContentItem } from '@/services/api'
+import type { Grade, Subject, Chapter, ContentItem, GlossaryEntry } from '@/services/api'
 
 function YouTubeEmbed({ url, title }: { url: string; title: string }) {
   const videoId = url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
@@ -13,17 +13,80 @@ function YouTubeEmbed({ url, title }: { url: string; title: string }) {
     <a href={url} target="_blank" rel="noopener noreferrer" className="text-primary-600 text-sm underline">{title || url}</a>
   )
   return (
-    <div className="rounded-xl overflow-hidden border border-neutral-200">
-      <iframe
-        src={`https://www.youtube.com/embed/${videoId}`}
-        title={title}
-        className="w-full aspect-video"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
-      />
-      {title && <p className="px-3 py-2 text-xs font-medium text-neutral-700 bg-neutral-50">{title}</p>}
+    <div className="space-y-1.5">
+      <div className="rounded-xl overflow-hidden border border-neutral-200">
+        <iframe
+          src={`https://www.youtube.com/embed/${videoId}`}
+          title={title}
+          className="w-full aspect-video"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        {title && <p className="text-xs font-medium text-neutral-700">{title}</p>}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-primary-600 hover:underline flex items-center gap-0.5 ml-auto"
+        >
+          <ExternalLink className="w-3 h-3" /> Watch
+        </a>
+      </div>
     </div>
   )
+}
+
+function GlossaryTooltip({ word, definition, synonym }: {
+  word: string
+  definition: string
+  synonym: string | null
+}) {
+  return (
+    <span className="relative inline group cursor-help">
+      <span className="font-bold underline decoration-dotted decoration-primary-400 text-primary-700">
+        {word}
+      </span>
+      <span className="absolute bottom-full left-0 z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-64 p-3 bg-neutral-900 text-white text-xs rounded-lg shadow-xl pointer-events-none mb-1">
+        <span className="font-semibold block mb-1">{word}</span>
+        {definition}
+        {synonym && <span className="block mt-1 text-neutral-400 italic">Also: {synonym}</span>}
+      </span>
+    </span>
+  )
+}
+
+function injectGlossaryTooltips(
+  text: string,
+  glossaryMap: Map<string, GlossaryEntry>
+): React.ReactNode[] {
+  if (glossaryMap.size === 0) return [text]
+
+  const escaped = Array.from(glossaryMap.keys())
+    .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const pattern = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi')
+
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
+    const entry = glossaryMap.get(match[0].toLowerCase())!
+    parts.push(
+      <GlossaryTooltip
+        key={`${match[0]}-${match.index}`}
+        word={match[0]}
+        definition={entry.definition}
+        synonym={entry.synonym}
+      />
+    )
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts.length ? parts : [text]
 }
 
 export default function ChapterContent() {
@@ -34,6 +97,7 @@ export default function ChapterContent() {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [chapter, setChapter] = useState<Chapter | null>(null)
   const [contents, setContents] = useState<ContentItem[]>([])
+  const [glossary, setGlossary] = useState<GlossaryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -44,16 +108,37 @@ export default function ChapterContent() {
       api.grades.listSubjects(classId),
       api.chapters.list(subjectId),
       api.content.listByChapter(chapterId),
+      api.glossary.listByChapter(chapterId),
     ])
-      .then(([grades, subs, chaps, items]) => {
+      .then(([grades, subs, chaps, items, words]) => {
         setGrade(grades.find(g => g.id === classId) ?? null)
         setSubject(subs.find(s => s.id === subjectId) ?? null)
         setChapter(chaps.find(c => c.id === chapterId) ?? null)
         setContents(items.sort((a, b) => a.order_index - b.order_index))
+        setGlossary(words)
       })
       .catch(() => setError('Failed to load chapter content'))
       .finally(() => setLoading(false))
   }, [classId, subjectId, chapterId])
+
+  const glossaryMap = useMemo(
+    () => new Map(glossary.map(e => [e.word.toLowerCase(), e])),
+    [glossary]
+  )
+
+  const markdownComponents = useMemo(() => {
+    const process = (children: React.ReactNode): React.ReactNode => {
+      if (typeof children === 'string') return injectGlossaryTooltips(children, glossaryMap)
+      if (Array.isArray(children)) return children.map((c, i) =>
+        typeof c === 'string' ? <>{injectGlossaryTooltips(c, glossaryMap)}</> : c
+      )
+      return children
+    }
+    return {
+      p: ({ children }: { children: React.ReactNode }) => <p>{process(children)}</p>,
+      li: ({ children }: { children: React.ReactNode }) => <li>{process(children)}</li>,
+    }
+  }, [glossaryMap])
 
   const textItems = contents.filter(c => c.content_type === 'simplified_text' || c.content_type === 'note')
   const videoItems = contents.filter(c => c.content_type === 'video_youtube')
@@ -143,7 +228,7 @@ export default function ChapterContent() {
                 )}
                 {item.text_content && (
                   <div className="prose prose-sm prose-neutral max-w-none text-sm text-neutral-700 leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text_content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{item.text_content}</ReactMarkdown>
                   </div>
                 )}
                 {item.is_ai_generated && (
@@ -215,6 +300,7 @@ export default function ChapterContent() {
                 </div>
               </div>
             )}
+
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bot, Upload, Loader2, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react'
 import { api } from '@/services/api'
 import type { Grade, Subject, Chapter } from '@/services/api'
@@ -8,6 +9,7 @@ type Step = 'idle' | 'uploading' | 'processing' | 'done' | 'error'
 
 export default function AIProcessor() {
   useDocTitle('AI Textbook Processor')
+  const navigate = useNavigate()
 
   // Setup state
   const [grades, setGrades] = useState<Grade[]>([])
@@ -27,7 +29,9 @@ export default function AIProcessor() {
   const [step, setStep] = useState<Step>('idle')
   const [statusMsg, setStatusMsg] = useState('')
   const [chapterIdToProcess, setChapterIdToProcess] = useState('')
+  const [contentReady, setContentReady] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load grades on mount
   useEffect(() => {
@@ -79,6 +83,33 @@ export default function AIProcessor() {
     setNewChapterTitle('')
   }
 
+  const startPolling = (chapId: string) => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const status = await api.books.getStatus(chapId)
+        if (status.has_content) {
+          setContentReady(true)
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+        }
+      } catch {
+        // Silent fail on poll error, interval continues
+      }
+    }, 4000)
+  }
+
+  const stopPolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => stopPolling()
+  }, [])
+
   const handleProcess = async () => {
     const chapId = selectedChapter || chapterIdToProcess
     if (!chapId) { setStatusMsg('Select or enter a chapter ID'); return }
@@ -90,15 +121,22 @@ export default function AIProcessor() {
       await api.books.uploadPdf(chapId, file)
 
       setStep('processing')
-      setStatusMsg('PDF uploaded. Triggering AI agent (runs in background)...')
+      setStatusMsg('')
       const res = await api.books.process(chapId)
 
       setStep('done')
-      setStatusMsg(`Agent queued! Status: ${res.status} — ${res.message}`)
+      setContentReady(false)
+      startPolling(chapId)
     } catch (e: unknown) {
       setStep('error')
       setStatusMsg(e instanceof Error ? e.message : 'Something went wrong')
+      stopPolling()
     }
+  }
+
+  const handleViewContent = () => {
+    stopPolling()
+    navigate(`/admin/classes/${selectedGrade}/${selectedSubject}/${selectedChapter}`)
   }
 
   const stepIcon = {
@@ -256,6 +294,14 @@ export default function AIProcessor() {
             />
           </div>
 
+          {/* Processing banner */}
+          {step === 'processing' && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <Loader2 className="w-4 h-4 animate-spin text-amber-600 flex-shrink-0" />
+              <p className="text-sm text-amber-800 font-medium">Generating content… this may take a few minutes.</p>
+            </div>
+          )}
+
           <button
             onClick={handleProcess}
             disabled={!file || step === 'uploading' || step === 'processing'}
@@ -270,8 +316,8 @@ export default function AIProcessor() {
         </div>
       )}
 
-      {/* Status */}
-      {statusMsg && (
+      {/* Status message for errors during upload */}
+      {statusMsg && step === 'error' && (
         <div className={`flex items-start gap-3 px-4 py-3 border rounded-xl text-sm ${stepColor[step]}`}>
           {stepIcon[step]}
           <p>{statusMsg}</p>
@@ -279,16 +325,41 @@ export default function AIProcessor() {
       )}
 
       {step === 'done' && (
-        <div className="bg-white border border-neutral-200 rounded-2xl p-5 text-sm text-neutral-600 space-y-1">
-          <p className="font-semibold text-neutral-800">What happens next?</p>
-          <p>The agent is running in the background. It will:</p>
-          <ul className="list-disc list-inside space-y-0.5 ml-2">
-            <li>Simplify the chapter text</li>
-            <li>Search YouTube for relevant videos</li>
-            <li>Generate illustrative images via Imagen</li>
-            <li>Extract glossary words with definitions</li>
-          </ul>
-          <p className="pt-1 text-neutral-500">Results are saved to the DB as <code>chapter_contents</code> and <code>glossary_entries</code>.</p>
+        <div className="space-y-4">
+          {/* Content status banner */}
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm ${contentReady ? 'bg-success-50 border border-success-200 text-success-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
+            {contentReady ? (
+              <>
+                <CheckCircle className="w-4 h-4 text-success-600 flex-shrink-0" />
+                <p className="font-medium">Content is ready! You can view it now.</p>
+              </>
+            ) : (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+                <p className="font-medium">Agent queued! Content generation is running in the background.</p>
+              </>
+            )}
+          </div>
+
+          {/* View Content button */}
+          <button
+            onClick={handleViewContent}
+            className="w-full px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            <CheckCircle className="w-4 h-4" />
+            View Content
+          </button>
+
+          {/* Info box */}
+          <div className="bg-white border border-neutral-200 rounded-2xl p-5 text-sm text-neutral-600 space-y-1">
+            <p className="font-semibold text-neutral-800">What the agent does:</p>
+            <ul className="list-disc list-inside space-y-0.5 ml-2">
+              <li>Simplifies the chapter text with structure and headings</li>
+              <li>Finds relevant YouTube videos</li>
+              <li>Generates grade-appropriate illustrative images</li>
+              <li>Extracts glossary words with definitions</li>
+            </ul>
+          </div>
         </div>
       )}
     </div>
