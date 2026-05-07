@@ -7,7 +7,7 @@ on Gemini 2.5 Pro).
 """
 from google import genai
 from google.genai import types as genai_types
-from app.core.config import GEMINI_API_KEY
+from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
 
 
 def web_search(query: str) -> str:
@@ -21,7 +21,7 @@ def web_search(query: str) -> str:
     """
     client = genai.Client(api_key=GEMINI_API_KEY)
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model=GEMINI_MODEL,
         contents=(
             f"Search the web for: {query}\n"
             f"List the top 5 most relevant results. "

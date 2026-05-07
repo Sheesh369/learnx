@@ -1,4 +1,3 @@
-import asyncio
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -7,8 +6,9 @@ from app.models.chapter import Chapter
 from app.models.subject import Subject
 from app.models.grade import Grade
 from app.models.content import ChapterContent, ContentType
-from app.core.gcs import upload_bytes
+from app.core.gcs import upload_bytes, delete_blob
 from app.schemas.agent import AgentStatusOut
+from app.agent.runner import process_chapter_async
 
 router = APIRouter(prefix="/api/admin/books", tags=["Admin - Books"])
 
@@ -28,6 +28,17 @@ async def upload_pdf(
     chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
+
+    # Delete old PDFs for this chapter
+    old_pdfs = db.query(ChapterContent).filter(
+        ChapterContent.chapter_id == chapter_id,
+        ChapterContent.content_type == ContentType.pdf,
+    ).all()
+    for old in old_pdfs:
+        if old.gcs_url:
+            delete_blob(old.gcs_url)
+        db.delete(old)
+    db.flush()
 
     data = await file.read()
     gcs_url = upload_bytes(data, "application/pdf", folder="books")
@@ -75,43 +86,46 @@ async def process_chapter(
     grade_standard = grade.standard if grade else 0
     subject_name = subject.name if subject else ""
 
+    from app.db.database import SessionLocal
+
+    db = SessionLocal()
     background_tasks.add_task(
-        _run_agent_bg,
+        process_chapter_async,
         chapter_id=chapter_id,
         chapter_title=chapter.title,
         subject_name=subject_name,
         grade_standard=grade_standard,
         subject_id=subject.id if subject else None,
         pdf_gcs_url=pdf_content.gcs_url,
+        db=db,
     )
 
     return AgentStatusOut(chapter_id=chapter_id, status="queued", message="Agent started")
 
 
-def _run_agent_bg(
+@router.get("/{chapter_id}/status")
+async def get_chapter_status(
     chapter_id: str,
-    chapter_title: str,
-    subject_name: str,
-    grade_standard: int,
-    subject_id: str | None,
-    pdf_gcs_url: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
 ):
-    """Background wrapper to run the async agent."""
-    from app.agent.runner import process_chapter_async
-    from app.db.database import SessionLocal
+    """Check if content has been generated for a chapter."""
+    chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
 
-    db = SessionLocal()
-    try:
-        asyncio.run(
-            process_chapter_async(
-                chapter_id=chapter_id,
-                chapter_title=chapter_title,
-                subject_name=subject_name,
-                grade_standard=grade_standard,
-                subject_id=subject_id,
-                pdf_gcs_url=pdf_gcs_url,
-                db=db,
-            )
+    content_count = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.chapter_id == chapter_id,
+            ChapterContent.is_ai_generated == True,  # noqa: E712
         )
-    finally:
-        db.close()
+        .count()
+    )
+    has_content = content_count > 0
+
+    return {
+        "chapter_id": chapter_id,
+        "has_content": has_content,
+        "content_count": content_count,
+    }
