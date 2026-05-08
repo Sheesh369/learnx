@@ -34,6 +34,16 @@ export interface AdminUser {
   is_active: boolean
 }
 
+export interface GlossaryEntry {
+  id: string
+  word: string
+  definition: string
+  synonym: string | null
+  chapter_id: string | null
+  subject_id: string | null
+  is_ai_generated: boolean
+}
+
 async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('learnexa_token')
   const headers: Record<string, string> = {}
@@ -98,6 +108,15 @@ export const api = {
         `/api/admin/books/${chapterId}/process`,
         { method: 'POST' }
       ),
+    getStatus: (chapterId: string) =>
+      apiFetch<{ chapter_id: string; has_content: boolean; content_count: number }>(
+        `/api/admin/books/${chapterId}/status`,
+        { method: 'GET' }
+      ),
+  },
+  glossary: {
+    listByChapter: (chapterId: string) =>
+      apiFetch<GlossaryEntry[]>(`/api/glossary/chapter/${chapterId}`),
   },
 }
 
