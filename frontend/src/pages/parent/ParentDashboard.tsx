@@ -2,7 +2,7 @@ import { Trophy, BookOpen, TrendingUp, Clock } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { StatCard, StatGrid } from '@/components/shared/StatCard'
 import useAuthStore from '@/store/authStore'
-import { SCHOOL_NAME } from '@/lib/constants'
+import useSettingsStore from '@/store/settingsStore'
 import { getInitials } from '@/lib/utils'
 import type { StatCard as StatCardType } from '@/types'
 import { PARENT_DASHBOARD_RESULTS } from '@/lib/mockData'
@@ -13,6 +13,7 @@ const RESULTS = PARENT_DASHBOARD_RESULTS
 export default function ParentDashboard() {
   useDocTitle('Parent Dashboard')
   const { user } = useAuthStore()
+  const schoolName = useSettingsStore((s) => s.settings.name)
   const child = user?.children?.[0]
 
   const stats: StatCardType[] = [
@@ -33,7 +34,7 @@ export default function ParentDashboard() {
           </div>
           <div>
             <h2 className="font-display text-xl font-bold">{child?.name || 'Student'}</h2>
-            <p className="text-primary-100">Class {child?.class || '9A'} • Karnataka State Board • {SCHOOL_NAME}</p>
+            <p className="text-primary-100">Class {child?.class || '9A'} • Karnataka State Board • {schoolName}</p>
           </div>
         </div>
       </div>

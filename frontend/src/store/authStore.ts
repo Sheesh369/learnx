@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { User, UserRole } from '@/types'
 import { DASHBOARD_PATHS } from '@/lib/constants'
 import api from '@/services/api'
+import useProcessingStore from './processingStore'
 
 interface AuthState {
   user: User | null
@@ -38,6 +39,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: () => {
     localStorage.removeItem('learnexa_token')
+    useProcessingStore.getState().clearAll()
     set({ user: null, token: null, isAuthenticated: false })
   },
 

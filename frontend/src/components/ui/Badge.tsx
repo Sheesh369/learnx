@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 interface BadgeProps {
   color?: 'green' | 'amber' | 'red' | 'blue' | 'neutral' | 'purple'

@@ -1,20 +1,22 @@
 import { Search, Menu } from 'lucide-react'
-import { SCHOOL_NAME } from '@/lib/constants'
+import useSettingsStore from '@/store/settingsStore'
 
 interface TopbarProps {
   onMenuClick: () => void
 }
 
 export default function Topbar({ onMenuClick }: TopbarProps) {
+  const schoolName = useSettingsStore((s) => s.settings.name)
+
   return (
     <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-neutral-200">
       <div className="flex items-center justify-between h-14 px-4 sm:px-6 lg:px-8">
-        {/* Left — School name */}
+        {/* Left — School name (reads from settingsStore, updates instantly when admin saves) */}
         <div className="flex items-center gap-4">
           <button onClick={onMenuClick} className="lg:hidden p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-xl">
             <Menu className="w-5 h-5" />
           </button>
-          <h1 className="text-sm font-semibold text-neutral-800">{SCHOOL_NAME}</h1>
+          <h1 className="text-sm font-semibold text-neutral-800">{schoolName}</h1>
         </div>
 
         {/* Right — Search bar */}

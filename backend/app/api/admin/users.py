@@ -10,27 +10,27 @@ router = APIRouter(prefix="/api/admin", tags=["Admin - Users"])
 
 
 @router.post("/upload/students", response_model=ExcelUploadResponse)
-async def upload_students(
+def upload_students(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Only Excel files accepted")
-    data = await file.read()
+    data = file.file.read()
     result = process_student_excel(data, db)
     return result
 
 
 @router.post("/upload/teachers", response_model=ExcelUploadResponse)
-async def upload_teachers(
+def upload_teachers(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Only Excel files accepted")
-    data = await file.read()
+    data = file.file.read()
     result = process_teacher_excel(data, db)
     return result
 

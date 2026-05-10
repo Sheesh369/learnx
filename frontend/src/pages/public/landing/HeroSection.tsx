@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { SCHOOL_NAME } from '@/lib/constants'
+import useSettingsStore from '@/store/settingsStore'
 import { LANDING_STATS } from '@/lib/mockData'
 import { useCounter } from './LandingUtils'
 
@@ -12,6 +13,7 @@ interface HeroSectionProps {
 }
 
 export default function HeroSection({ imgIdx, setImgIdx }: HeroSectionProps) {
+  const schoolName = useSettingsStore((s) => s.settings.name)
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0d3b10 0%, #1b5e20 30%, #00695c 60%, #004d40 100%)' }}>
       <div className="absolute inset-0 mesh-grid" />
@@ -61,7 +63,7 @@ export default function HeroSection({ imgIdx, setImgIdx }: HeroSectionProps) {
               ))}
               <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
               <div className="absolute bottom-4 left-4 right-4 bg-white/10 backdrop-blur-md rounded-xl px-4 py-3 border border-white/20">
-                <p className="text-white text-sm font-medium">📚 {SCHOOL_NAME}</p>
+                <p className="text-white text-sm font-medium">📚 {schoolName}</p>
                 <p className="text-white/70 text-xs">Empowering students with chapter-wise learning</p>
               </div>
             </div>

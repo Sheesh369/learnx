@@ -6,6 +6,7 @@ import { getInitials } from '@/lib/utils'
 import { useDocTitle } from '@/lib/useDocTitle'
 import { api } from '@/services/api'
 import type { AdminUser } from '@/services/api'
+import useActivityStore from '@/store/activityStore'
 
 export default function TeacherManagement() {
   useDocTitle('Teachers')
@@ -38,6 +39,11 @@ export default function TeacherManagement() {
       })
       const data = await res.json()
       setUploadMsg(`Created: ${data.created} • Skipped: ${data.skipped}${data.errors?.length ? ` • Errors: ${data.errors.length}` : ''}`)
+      useActivityStore.getState().addEntry({
+        type: 'teacher_upload',
+        title: 'Teachers Uploaded',
+        description: `${data.created} added${data.skipped ? ` · ${data.skipped} skipped` : ''}`,
+      })
       // Refresh teacher list
       api.admin.listUsers('teacher').then(setTeachers).catch(() => {})
     } catch {

@@ -16,6 +16,7 @@ from app.api.admin.grades import router as grades_router
 from app.api.admin.users import router as admin_users_router
 from app.api.admin.books import router as books_router
 from app.api.admin.chapters import router as chapters_router
+from app.api.questions import router as questions_router
 
 
 @asynccontextmanager
@@ -58,6 +59,7 @@ app.include_router(grades_router)
 app.include_router(admin_users_router)
 app.include_router(books_router)
 app.include_router(chapters_router)
+app.include_router(questions_router, prefix="/api/questions", tags=["Questions"])
 
 
 @app.get("/")

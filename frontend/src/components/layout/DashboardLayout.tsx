@@ -3,6 +3,9 @@ import { Outlet } from 'react-router-dom'
 import { X } from 'lucide-react'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import ProcessingManager from '@/components/shared/ProcessingManager'
+import ProcessingStatusBar from '@/components/shared/ProcessingStatusBar'
+import { ToastContainer } from '@/components/ui'
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -10,6 +13,8 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-neutral-50">
+      <ProcessingManager />
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -37,10 +42,13 @@ export default function DashboardLayout() {
       {/* Main content */}
       <div className={`transition-all duration-200 ${collapsed ? 'lg:pl-[68px]' : 'lg:pl-64'}`}>
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
+        <ProcessingStatusBar />
         <main className="p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
       </div>
+
+      <ToastContainer />
     </div>
   )
 }

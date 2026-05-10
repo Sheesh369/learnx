@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react'
 import useAuthStore from '@/store/authStore'
-import { APP_NAME, SCHOOL_NAME } from '@/lib/constants'
+import { APP_NAME } from '@/lib/constants'
 import { useDocTitle } from '@/lib/useDocTitle'
 import { loginSchema, validateForm } from '@/lib/validation'
+import useSettingsStore from '@/store/settingsStore'
 
 export default function LoginPage() {
   useDocTitle('Login')
   const { login, isLoading, error, isAuthenticated, clearError, getDashboardPath } = useAuthStore()
+  const schoolName = useSettingsStore((s) => s.settings.name)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -38,7 +40,7 @@ export default function LoginPage() {
             <img src="/logo.png" alt="Learnexa" className="w-14 h-14 object-contain" />
           </div>
           <h1 className="font-display text-3xl font-bold mb-3">Welcome back to {APP_NAME}</h1>
-          <p className="text-primary-200 text-lg">{SCHOOL_NAME}</p>
+          <p className="text-primary-200 text-lg">{schoolName}</p>
         </div>
       </div>
 

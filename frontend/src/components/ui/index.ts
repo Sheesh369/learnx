@@ -1,5 +1,5 @@
 export { Modal } from './Modal'
-export { Toast } from './Toast'
+export { Toast, ToastContainer } from './Toast'
 export { Select } from './Select'
 export { Input } from './Input'
 export { Button } from './Button'

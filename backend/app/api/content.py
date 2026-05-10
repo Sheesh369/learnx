@@ -1,14 +1,30 @@
+import asyncio
+import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.core.deps import get_current_user, require_admin
+from app.core.processing_state import chapter_processing
 from app.models.content import ChapterContent, ContentType
 from app.models.chapter import Chapter
-from app.schemas.content import ContentCreate, ContentUpdate, ContentOut
-from app.services.content_service import delete_content
-from app.core.gcs import upload_bytes
+from app.schemas.content import ContentCreate, ContentUpdate, ContentOut, BulkReorderItem
+from app.core.gcs import upload_bytes, delete_blob
+
+_YOUTUBE_RE = re.compile(
+    r'^https?://(www\.)?youtube\.com/watch\?v=|^https?://youtu\.be/'
+)
 
 router = APIRouter(prefix="/api/content", tags=["Content"])
+
+
+@router.get("/stats")
+def content_stats(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Count of distinct chapters that have at least one AI-generated content item."""
+    count = db.query(func.count(distinct(ChapterContent.chapter_id))).filter(
+        ChapterContent.is_ai_generated == True,  # noqa: E712
+    ).scalar()
+    return {"chapters_with_content": count or 0}
 
 
 @router.get("/chapter/{chapter_id}", response_model=list[ContentOut])
@@ -22,7 +38,7 @@ def list_content(chapter_id: str, db: Session = Depends(get_db), _=Depends(get_c
 
 
 @router.post("/chapter/{chapter_id}", response_model=ContentOut, status_code=201)
-async def add_content(
+def add_content(
     chapter_id: str,
     data: ContentCreate,
     db: Session = Depends(get_db),
@@ -63,7 +79,7 @@ async def upload_content_file(
 
     data = await file.read()
     folder = "images" if file.content_type and file.content_type.startswith("image/") else "files"
-    gcs_url = upload_bytes(data, file.content_type or "application/octet-stream", folder=folder)
+    gcs_url = await asyncio.to_thread(upload_bytes, data, file.content_type or "application/octet-stream", folder)
     ctype = ContentType.image if folder == "images" else ContentType.pdf
 
     item = ChapterContent(
@@ -84,11 +100,15 @@ def update_content(
     content_id: str,
     data: ContentUpdate,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    _=Depends(require_admin),
 ):
     item = db.query(ChapterContent).filter(ChapterContent.id == content_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Content not found")
+    if item.chapter_id in chapter_processing:
+        raise HTTPException(status_code=409, detail="Cannot edit content while chapter is being processed")
+    if data.youtube_url and not _YOUTUBE_RE.match(data.youtube_url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL — must be youtube.com/watch?v= or youtu.be/")
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(item, field, value)
     db.commit()
@@ -112,11 +132,34 @@ def reorder_content(
     return item
 
 
+@router.patch("/chapter/{chapter_id}/reorder-bulk", status_code=204)
+def bulk_reorder_content(
+    chapter_id: str,
+    items: list[BulkReorderItem],
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Update order_index for multiple content items in one transaction."""
+    for item in items:
+        db.query(ChapterContent).filter(
+            ChapterContent.id == item.id,
+            ChapterContent.chapter_id == chapter_id,
+        ).update({"order_index": item.order_index})
+    db.commit()
+
+
 @router.delete("/{content_id}", status_code=204)
 def remove_content(
     content_id: str,
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    if not delete_content(content_id, db):
+    item = db.query(ChapterContent).filter(ChapterContent.id == content_id).first()
+    if not item:
         raise HTTPException(status_code=404, detail="Content not found")
+    if item.chapter_id in chapter_processing:
+        raise HTTPException(status_code=409, detail="Cannot delete content while chapter is being processed")
+    if item.gcs_url:
+        delete_blob(item.gcs_url)
+    db.delete(item)
+    db.commit()

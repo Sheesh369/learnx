@@ -34,3 +34,8 @@ class ContentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BulkReorderItem(BaseModel):
+    id: str
+    order_index: int
